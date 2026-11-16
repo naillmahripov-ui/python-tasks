@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Python Плейграунд</title>
+<style>
+  :root {
+    --bg: #12151c;
+    --panel: #1a1f2b;
+    --border: #2a3244;
+    --text: #e6e9ef;
+    --muted: #8b94a7;
+    --accent: #4f9cf9;
+    --ok: #57c98b;
+    --err: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 10px;
+    min-height: 0;
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  }
+  .pane {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .pane-title {
+    padding: 8px 12px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  textarea {
+    flex: 1;
+    width: 100%;
+    resize: none;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    padding: 12px;
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 14px;
+    line-height: 1.55;
+    tab-size: 4;
+  }
+  #stdin {
+    flex: none;
+    height: 68px;
+    border-top: 1px solid var(--border);
+  }
+  pre {
+    flex: 1;
+    margin: 0;
+    padding: 12px;
+    overflow: auto;
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .out-stdout { color: var(--text); }
+  .out-stderr { color: var(--err); }
+  .out-meta { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .ok { color: var(--ok); }
+  .err { color: var(--err); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🐍 Python Плейграунд</h1>
+  <span class="hint">Ctrl+Enter — запустить</span>
+  <span class="spacer"></span>
+  <button class="ghost" id="clear">Очистить</button>
+  <button id="run">▶ Запустить</button>
+</header>
+
+<main>
+  <section class="pane">
+    <div class="pane-title">main.py</div>
+    <textarea id="code" spellcheck="false">print("Привет! Это настоящий Python на твоём компьютере.")
+
+name = input("Как тебя зовут? ")
+print(f"Привет, {name}!")
+</textarea>
+    <textarea id="stdin" spellcheck="false" placeholder="Данные для input() — по одному значению в строке. Здесь: Аня"></textarea>
+  </section>
+
+  <section class="pane">
+    <div class="pane-title">Вывод <span id="status"></span></div>
+    <pre id="out" class="out-stdout">Нажми «Запустить».</pre>
+  </section>
+</main>
+
+<script>
+const codeEl = document.getElementById("code");
+const stdinEl = document.getElementById("stdin");
+const outEl = document.getElementById("out");
+const statusEl = document.getElementById("status");
+
+// сохраняем код между перезагрузками страницы
+const saved = localStorage.getItem("pyplay.code");
+if (saved !== null) codeEl.value = saved;
+codeEl.addEventListener("input", () => localStorage.setItem("pyplay.code", codeEl.value));
+
+async function run() {
+  const btn = document.getElementById("run");
+  btn.disabled = true;
+  statusEl.textContent = "⏳";
+  statusEl.className = "";
+
+  try {
+    const res = await fetch("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: codeEl.value, stdin: stdinEl.value })
+    });
+    const data = await res.json();
+
+    outEl.textContent = "";
+    if (data.stdout) {
+      const span = document.createElement("span");
+      span.className = "out-stdout";
+      span.textContent = data.stdout;
+      outEl.appendChild(span);
+    }
+    if (data.stderr) {
+      const span = document.createElement("span");
+      span.className = "out-stderr";
+      span.textContent = data.stderr;
+      outEl.appendChild(span);
+    }
+    if (!data.stdout && !data.stderr) {
+      outEl.textContent = "(программа ничего не вывела)";
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "out-meta";
+    meta.innerHTML = data.exit_code === 0
+      ? `<span class="ok">✓ выполнено за ${data.duration} с</span>`
+      : `<span class="err">✗ код выхода ${data.exit_code}, ${data.duration} с</span>`;
+    outEl.appendChild(meta);
+
+    statusEl.textContent = data.exit_code === 0 ? "✓" : "✗";
+    statusEl.className = data.exit_code === 0 ? "ok" : "err";
+  } catch (e) {
+    outEl.textContent = "Не удалось связаться с сервером. Он запущен? (python server.py)";
+    statusEl.textContent = "✗";
+    statusEl.className = "err";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("run").addEventListener("click", run);
+document.getElementById("clear").addEventListener("click", () => {
+  codeEl.value = "";
+  codeEl.focus();
+  localStorage.removeItem("pyplay.code");
+});
+
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    e.preventDefault();
+    run();
+  }
+});
+
+// Tab в редакторе вставляет отступ, а не уводит фокус
+codeEl.addEventListener("keydown", (e) => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const s = codeEl.selectionStart, t = codeEl.selectionEnd;
+    codeEl.value = codeEl.value.slice(0, s) + "    " + codeEl.value.slice(t);
+    codeEl.selectionStart = codeEl.selectionEnd = s + 4;
+  }
+});
+</script>
+</body>
+</html>
